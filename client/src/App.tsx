@@ -262,9 +262,12 @@ export default function App() {
     <div className="min-h-screen bg-slate-950">
       {/* 헤더 */}
       <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-10 print:hidden">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <h1 className="text-lg text-white"><span className="font-bold">산업동향 초안 생성</span> <span className="font-light text-slate-400">by 혜만</span></h1>
-          <p className="text-xs text-slate-500">AI 기반 산업 리서치 리포트</p>
+        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-lg text-white"><span className="font-bold">산업동향 초안 생성</span> <span className="font-light text-slate-400">by 혜만</span></h1>
+            <p className="text-xs text-slate-500">AI 기반 산업 리서치 리포트</p>
+          </div>
+          <span className="text-xs text-slate-600 font-mono">ver 2.3</span>
         </div>
       </header>
 
