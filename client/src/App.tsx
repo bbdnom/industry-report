@@ -166,12 +166,15 @@ function downloadPDF() {
   window.print();
 }
 
+// PPT 다운로드 (상태 관리는 컴포넌트 내부에서)
+
 export default function App() {
   const [industry, setIndustry] = useState("");
   const [subField, setSubField] = useState<string | null>(null);
   const [customQuery, setCustomQuery] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [pptLoading, setPptLoading] = useState(false);
   const [reportKey, setReportKey] = useState("");
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -322,16 +325,52 @@ export default function App() {
         {report && !loading && (
           <>
             {/* 다운로드 버튼 */}
-            <div className="flex gap-2 mb-4 print:hidden">
+            <div className="flex flex-wrap gap-3 mb-5 print:hidden">
               <button onClick={downloadPDF}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition-colors flex items-center gap-1.5">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                PDF 저장
+                className="group px-5 py-2.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-xl text-sm font-medium transition-all shadow-lg shadow-red-900/20 hover:shadow-red-900/40 flex items-center gap-2">
+                <svg className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                PDF
               </button>
               <button onClick={() => downloadWord(report)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition-colors flex items-center gap-1.5">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                Word 다운로드
+                className="group px-5 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 text-white rounded-xl text-sm font-medium transition-all shadow-lg shadow-blue-900/20 hover:shadow-blue-900/40 flex items-center gap-2">
+                <svg className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                Word
+              </button>
+              <button
+                onClick={async () => {
+                  setPptLoading(true);
+                  try {
+                    const res = await fetch("/api/generate-ppt", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(report),
+                    });
+                    if (!res.ok) {
+                      const err = await res.json().catch(() => ({ error: "PPT 생성 실패" }));
+                      alert(err.error || "PPT 생성 실패");
+                      return;
+                    }
+                    const blob = await res.blob();
+                    saveAs(blob, `${report.label}_산업동향초안_${new Date().toISOString().slice(0, 10)}.pptx`);
+                  } catch (e: any) {
+                    alert("PPT 생성 중 오류: " + (e.message || e));
+                  } finally {
+                    setPptLoading(false);
+                  }
+                }}
+                disabled={pptLoading}
+                className="group px-5 py-2.5 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 disabled:from-orange-800 disabled:to-orange-900 disabled:cursor-wait text-white rounded-xl text-sm font-medium transition-all shadow-lg shadow-orange-900/20 hover:shadow-orange-900/40 flex items-center gap-2">
+                {pptLoading ? (
+                  <>
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                    PPT 생성 중...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
+                    PPT (발표 스크립트 포함)
+                  </>
+                )}
               </button>
             </div>
 
@@ -350,6 +389,7 @@ export default function App() {
                   <span>국내뉴스 {report.stats.domesticNews}건</span>
                   <span>정책 {report.stats.policy}건</span>
                   <span>글로벌 {report.stats.globalNews}건</span>
+                  {report.stats.kdi > 0 && <span>KDI {report.stats.kdi}건</span>}
                 </div>
               </div>
 

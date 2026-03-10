@@ -1,11 +1,13 @@
 import express from "express";
 import cors from "cors";
 import path from "path";
+import { spawn } from "child_process";
 import "dotenv/config";
 import Anthropic from "@anthropic-ai/sdk";
 import { DbpiaClient } from "./lib-dbpia.js";
 import { NaverClient } from "./lib-naver.js";
 import { NewsClient } from "./lib-news.js";
+import { KdiClient } from "./lib-kdi.js";
 
 const app = express();
 const PORT = process.env.PORT ?? 3002;
@@ -17,6 +19,7 @@ app.use(express.json());
 const dbpia = new DbpiaClient(process.env.DBPIA_API_KEY!);
 const naver = new NaverClient(process.env.NAVER_CLIENT_ID!, process.env.NAVER_CLIENT_SECRET!);
 const newsApi = new NewsClient(process.env.NEWS_API_KEY!);
+const kdi = process.env.KDI_API_KEY ? new KdiClient(process.env.KDI_API_KEY) : null;
 
 const anthropic = process.env.ANTHROPIC_API_KEY
   ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -162,6 +165,7 @@ async function collectData(searchKr: string[], searchEn: string[]) {
     domesticNewsResult, domesticTrendResult, domesticPolicyResult,
     domesticInvestResult, domesticCompanyResult,
     globalNewsResult, globalTrendResult,
+    kdiLatestResult, kdiSearchResult,
   ] = await Promise.allSettled([
     dbpia.search(searchKr.slice(0, 3).join(" "), { pageCount: 20, sortType: 2 }),
     dbpia.search(krTrendQuery, { pageCount: 15, sortType: 2 }),
@@ -172,6 +176,8 @@ async function collectData(searchKr: string[], searchEn: string[]) {
     naver.searchNews(krCompanyQuery, { display: 15, sort: "date" }),
     newsApi.searchEverything(enMainQuery, { language: "en", pageSize: 30, sortBy: "publishedAt" }),
     newsApi.searchEverything(enTrendQuery, { language: "en", pageSize: 20, sortBy: "relevancy" }),
+    kdi ? kdi.getLatest(3) : Promise.resolve({ totalCount: 0, items: [] }),
+    kdi ? kdi.search("경제") : Promise.resolve({ totalCount: 0, items: [] }),
   ]);
 
   const papers = papersResult.status === "fulfilled" ? papersResult.value : { totalCount: 0, items: [] };
@@ -208,7 +214,10 @@ async function collectData(searchKr: string[], searchEn: string[]) {
     return true;
   });
 
-  return { papers, papersTrend, domesticNews: domesticNewsDeduped, domesticTrend, domesticPolicy, globalNews };
+  const kdiLatest = kdiLatestResult.status === "fulfilled" ? kdiLatestResult.value : { totalCount: 0, items: [] };
+  const kdiSearch = kdiSearchResult.status === "fulfilled" ? kdiSearchResult.value : { totalCount: 0, items: [] };
+
+  return { papers, papersTrend, domesticNews: domesticNewsDeduped, domesticTrend, domesticPolicy, globalNews, kdiLatest, kdiSearch };
 }
 
 // 키워드 빈도 분석 기반 보고서 생성 (LLM 없이)
@@ -332,9 +341,32 @@ async function generateInsightReport(industryLabel: string, subField: string | n
 
   const topicFocus = subField ? `\n\n**분석 초점**: "${subField}" 하위 분야를 중심으로 분석하되, 상위 산업과의 연계성도 함께 다룰 것.` : "";
 
-  const totalSources = data.domesticNews.length + data.domesticTrend.length + data.domesticPolicy.length + data.globalNews.length + data.papers.items.length + data.papersTrend.items.length;
+  // KDI 경제전망 데이터
+  const kdiItems = [
+    ...(data.kdiLatest?.items || []),
+    ...(data.kdiSearch?.items || []),
+  ];
+  // 중복 제거 (pubNo 기준)
+  const kdiSeen = new Set<string>();
+  const kdiUnique = kdiItems.filter((k: any) => {
+    if (kdiSeen.has(k.pubNo)) return false;
+    kdiSeen.add(k.pubNo);
+    return true;
+  });
+  const kdiDetails = kdiUnique.slice(0, 5).map((k: any, i: number) => {
+    const summary = k.summary ? `\n  핵심: ${k.summary.slice(0, 500)}` : "";
+    const content = k.content ? `\n  목차: ${k.content.slice(0, 300)}` : "";
+    return `[KDI-${i + 1}] ${k.title}\n  발행: ${k.date}\n  분류: ${k.keyword}${summary}${content}`;
+  }).join("\n\n");
 
-  const prompt = `당신은 맥킨지, BCG 수준의 산업 리서치 시니어 애널리스트다. 아래 수집된 ${totalSources}건의 실시간 뉴스 기사, 학술논문, 정책자료를 **면밀히 분석**하여 "${industryLabel}" 산업에 대한 **심층 인사이트 보고서**를 작성하라.${topicFocus}
+  const totalSources = data.domesticNews.length + data.domesticTrend.length + data.domesticPolicy.length + data.globalNews.length + data.papers.items.length + data.papersTrend.items.length + kdiUnique.length;
+
+  const prompt = `당신은 맥킨지, BCG 수준의 산업 리서치 시니어 애널리스트다. 아래 수집된 ${totalSources}건의 실시간 뉴스 기사, 학술논문, 정책자료, KDI 경제전망 보고서를 **면밀히 분석**하여 "${industryLabel}" 산업에 대한 **심층 인사이트 보고서**를 작성하라.${topicFocus}
+
+━━━━━━━━━━━━━━━━━━━━━━
+## KDI 한국개발연구원 경제전망 보고서
+━━━━━━━━━━━━━━━━━━━━━━
+${kdiDetails || "(해당 산업 관련 KDI 자료 없음)"}
 
 ━━━━━━━━━━━━━━━━━━━━━━
 ## 수집된 국내 뉴스 기사
@@ -430,11 +462,14 @@ ${paperDetails}
 - **의사결정자를 위한 핵심 메시지** (3~4문장, 보고서의 결론)
 
 ### 문체 및 품질 기준
-- 한국어로 작성. 전문적이되 읽기 쉬운 문체.
+- 한국어로 작성. 상부 경영진에게 보고하는 격식 있는 존댓말 사용.
+- "~입니다", "~됩니다", "~것으로 판단됩니다", "~필요합니다" 등 보고서 어미 사용.
+- 절대 반말이나 구어체를 쓰지 말 것. ("~이다", "~한다" 대신 "~입니다", "~됩니다")
 - 각 섹션은 최소 3~5개 문단 이상으로 풍부하게 작성.
-- 단정적 표현 대신 "~로 분석된다", "~할 가능성이 높다" 등 근거 기반 표현 사용.
+- 단정적 표현 대신 "~로 분석됩니다", "~할 가능성이 높은 것으로 판단됩니다" 등 근거 기반 표현 사용.
 - 기사 원문의 핵심 수치나 인용구를 적극 활용.
-- 섹션 간 논리적 흐름을 유지하고, 앞 섹션의 분석이 뒤 섹션의 근거가 되도록 구성.`;
+- 섹션 간 논리적 흐름을 유지하고, 앞 섹션의 분석이 뒤 섹션의 근거가 되도록 구성.
+- 모든 문장은 완결된 형태로 마무리할 것. 문장이 중간에 끊기지 않도록 주의.`;
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
@@ -500,6 +535,8 @@ app.post("/api/generate", async (req, res) => {
     data.globalNews.forEach((n: any) => addRef("global", n.title, n.source?.name || "", new Date(n.publishedAt).toLocaleDateString("ko-KR"), n.url));
     data.papers.items.forEach((p: any) => addRef("paper", p.title, p.publication || p.publisher, p.issueDate, p.linkUrl));
     data.papersTrend.items.forEach((p: any) => addRef("paper", p.title, p.publication || p.publisher, p.issueDate, p.linkUrl));
+    if (data.kdiLatest) data.kdiLatest.items.forEach((k: any) => addRef("kdi", k.title, "KDI 한국개발연구원", k.date, k.detailPage));
+    if (data.kdiSearch) data.kdiSearch.items.forEach((k: any) => addRef("kdi", k.title, "KDI 한국개발연구원", k.date, k.detailPage));
 
     res.json({
       label,
@@ -510,6 +547,7 @@ app.post("/api/generate", async (req, res) => {
         domesticNews: data.domesticNews.length + data.domesticTrend.length,
         policy: data.domesticPolicy.length,
         globalNews: data.globalNews.length,
+        kdi: (data.kdiLatest?.totalCount || 0) + (data.kdiSearch?.totalCount || 0),
       },
       references,
     });
@@ -565,6 +603,98 @@ app.get("/api/search", async (req, res) => {
     const data = await dbpia.search(q, { pageNumber: page, pageCount: count, sortType: sort as 1 | 2 | 3 });
     res.json(data);
   } catch (e: unknown) {
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+// ── 슬라이드별 발표 스크립트 생성 ──
+async function generateSlideScripts(label: string, reportText: string): Promise<Record<string, string>> {
+  if (!anthropic) return {};
+  try {
+    const prompt = `당신은 기업 임원 대상 산업동향 보고 발표자입니다.
+
+아래는 "${label}" 산업동향 보고서입니다. 각 ## 섹션별로 구두 발표용 스크립트를 작성해주세요.
+
+### 작성 규칙
+- 상부 경영진(임원)에게 보고하는 격식 있는 존댓말 사용
+- "~입니다", "~되겠습니다", "~드리겠습니다", "~것으로 판단됩니다" 등 보고 어미 사용
+- 절대 반말이나 구어체 금지 ("~이다", "~한다" → "~입니다", "~됩니다")
+- 각 섹션 스크립트는 발표 시 1~2분 분량 (300~500자)
+- 핵심 수치와 인사이트를 자연스럽게 녹여서 설명
+- 슬라이드 내용을 단순 낭독하지 말고, 맥락과 의미를 설명하는 방식
+- 섹션 간 자연스러운 연결 멘트 포함
+- 모든 문장은 반드시 완결된 형태로 마무리할 것
+
+### 출력 형식 (반드시 이 형식으로)
+각 섹션을 [SECTION: 섹션제목] 으로 구분하고 그 아래에 스크립트를 작성하세요.
+
+[SECTION: Executive Summary]
+스크립트 내용...
+
+[SECTION: 산업 구조 및 현황]
+스크립트 내용...
+
+(이하 모든 섹션)
+
+### 보고서 원문
+${reportText}`;
+
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 4000,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const text = response.content.find((b) => b.type === "text")?.text || "";
+    const scripts: Record<string, string> = {};
+    const parts = text.split(/\[SECTION:\s*/);
+    for (const part of parts) {
+      if (!part.trim()) continue;
+      const closeBracket = part.indexOf("]");
+      if (closeBracket === -1) continue;
+      const sectionName = part.slice(0, closeBracket).trim();
+      const script = part.slice(closeBracket + 1).trim();
+      scripts[sectionName] = script;
+    }
+    return scripts;
+  } catch (e) {
+    console.error("Script generation error:", e);
+    return {};
+  }
+}
+
+// ── PPT 생성 ──
+app.post("/api/generate-ppt", async (req, res) => {
+  try {
+    // 슬라이드별 스크립트 생성
+    const scripts = await generateSlideScripts(req.body.label || "", req.body.report || "");
+    const pptData = { ...req.body, scripts };
+    const jsonInput = JSON.stringify(pptData);
+    const scriptPath = path.join(process.cwd(), "generate-ppt.py");
+
+    const result = await new Promise<Buffer>((resolve, reject) => {
+      const proc = spawn("python3", [scriptPath], {
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      const chunks: Buffer[] = [];
+      const errChunks: Buffer[] = [];
+      proc.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
+      proc.stderr.on("data", (chunk: Buffer) => errChunks.push(chunk));
+      proc.on("close", (code) => {
+        if (code !== 0) {
+          return reject(new Error(Buffer.concat(errChunks).toString()));
+        }
+        resolve(Buffer.concat(chunks));
+      });
+      proc.stdin.write(jsonInput);
+      proc.stdin.end();
+    });
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(req.body.label || "report")}_report.pptx"`);
+    res.send(result);
+  } catch (e: unknown) {
+    console.error("PPT generation error:", e);
     res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
   }
 });
