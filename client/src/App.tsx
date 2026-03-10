@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType } from "docx";
 import { saveAs } from "file-saver";
@@ -9,8 +9,7 @@ async function fetchJson(url: string, opts?: RequestInit) {
   return res.json();
 }
 
-interface Category { id: string; label: string }
-interface Keywords { kr: string[]; en: string[]; subFields: string[] }
+interface Category { id: string; label: string; sub: string[] }
 interface Reference {
   type: string; title: string; source: string; date: string; url: string;
 }
@@ -176,18 +175,27 @@ export default function App() {
   const [generating, setGenerating] = useState(false);
   const [pptLoading, setPptLoading] = useState(false);
   const [reportKey, setReportKey] = useState("");
+  const [loadingStep, setLoadingStep] = useState(0);
   const reportRef = useRef<HTMLDivElement>(null);
+
+  const LOADING_MESSAGES = [
+    "뉴스 기사를 수집하고 있습니다...",
+    "학술 논문을 검색하고 있습니다...",
+    "정책·규제 자료를 확인하고 있습니다...",
+    "경제전망 데이터를 조회하고 있습니다...",
+    "글로벌 이슈를 탐색하고 있습니다...",
+    "수집된 데이터를 종합 분석하고 있습니다...",
+    "AI가 인사이트 보고서를 작성하고 있습니다...",
+    "보고서 품질을 검토하고 있습니다...",
+    "거의 완료되었습니다. 잠시만 기다려주세요...",
+  ];
 
   const { data: categories } = useQuery<Category[]>({
     queryKey: ["categories"],
     queryFn: () => fetchJson("/api/categories"),
   });
 
-  const { data: keywords } = useQuery<Keywords>({
-    queryKey: ["keywords", industry],
-    queryFn: () => fetchJson(`/api/keywords?industry=${industry}`),
-    enabled: !!industry,
-  });
+  const selectedCategory = categories?.find(c => c.id === industry);
 
   const { data: report, isLoading, error } = useQuery<ReportResult>({
     queryKey: ["report", reportKey],
@@ -202,6 +210,17 @@ export default function App() {
     }),
     enabled: !!reportKey && generating,
   });
+
+  useEffect(() => {
+    if (!generating || !isLoading) {
+      setLoadingStep(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setLoadingStep((prev) => Math.min(prev + 1, LOADING_MESSAGES.length - 1));
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [generating, isLoading]);
 
   function handleGenerate() {
     if (!industry && !customQuery) return;
@@ -280,11 +299,11 @@ export default function App() {
           </div>
 
           {/* 세부 카테고리 */}
-          {keywords && (
+          {selectedCategory && selectedCategory.sub.length > 0 && (
             <div className="mb-4">
               <label className="block text-xs font-semibold text-slate-400 mb-2">세부 분야 (선택)</label>
               <div className="flex flex-wrap gap-1.5">
-                {keywords.subFields.map((sf) => (
+                {selectedCategory.sub.map((sf) => (
                   <button key={sf} onClick={() => selectSubField(sf)}
                     className={`px-3 py-1.5 rounded-full text-xs transition-all ${
                       subField === sf
@@ -302,7 +321,7 @@ export default function App() {
           <button onClick={handleGenerate}
             disabled={(!industry && !customQuery) || loading}
             className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed">
-            {loading ? "보고서 생성 중 (데이터 수집 + AI 분석)..." : "보고서 생성"}
+            {loading ? LOADING_MESSAGES[loadingStep] : "보고서 생성"}
           </button>
         </div>
 
@@ -310,8 +329,13 @@ export default function App() {
         {loading && (
           <div className="text-center py-16">
             <div className="inline-block w-10 h-10 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
-            <div className="text-slate-400 text-sm">논문·뉴스 수집 후 AI가 보고서를 작성하고 있습니다...</div>
-            <div className="text-xs text-slate-600 mt-1">약 15~30초 소요</div>
+            <div className="text-slate-400 text-sm transition-all">{LOADING_MESSAGES[loadingStep]}</div>
+            <div className="flex justify-center gap-1 mt-3">
+              {LOADING_MESSAGES.map((_, i) => (
+                <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i <= loadingStep ? "bg-blue-500" : "bg-slate-700"}`} />
+              ))}
+            </div>
+            <div className="text-xs text-slate-600 mt-2">단계 {loadingStep + 1} / {LOADING_MESSAGES.length}</div>
           </div>
         )}
 
@@ -368,7 +392,7 @@ export default function App() {
                 ) : (
                   <>
                     <svg className="w-4 h-4 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>
-                    PPT (발표 스크립트 포함)
+                    PPT (Beta)
                   </>
                 )}
               </button>

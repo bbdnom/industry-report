@@ -124,21 +124,21 @@ function decodeHtml(str: string) {
 
 app.get("/api/categories", (_req, res) => {
   res.json([
-    { id: "it-sw-ai", label: "IT / 소프트웨어 / AI" },
-    { id: "semiconductor", label: "반도체 / 전자부품" },
-    { id: "auto-mobility", label: "자동차 / 모빌리티" },
-    { id: "battery-energy", label: "이차전지 / 에너지 / 친환경" },
-    { id: "bio-healthcare", label: "바이오 / 헬스케어 / 제약" },
-    { id: "chemical-material", label: "화학 / 소재 / 부품" },
-    { id: "finance-fintech", label: "금융 / 핀테크" },
-    { id: "retail-ecommerce", label: "유통 / 이커머스 / 소비재" },
-    { id: "media-content", label: "미디어 / 콘텐츠 / 게임" },
-    { id: "construction-realestate", label: "건설 / 부동산 / 인프라" },
-    { id: "logistics-shipping", label: "물류 / 해운 / 항공" },
-    { id: "food-agri", label: "식품 / 농업 / 푸드테크" },
-    { id: "education", label: "교육 / 에듀테크" },
-    { id: "manufacturing", label: "제조 / 스마트팩토리 / 산업장비" },
-    { id: "telecom-cloud", label: "통신 / 네트워크 / 클라우드" },
+    { id: "it-sw-ai", label: "IT / 소프트웨어 / AI", sub: INDUSTRY_KEYWORDS["it-sw-ai"].sub },
+    { id: "semiconductor", label: "반도체 / 전자부품", sub: INDUSTRY_KEYWORDS["semiconductor"].sub },
+    { id: "auto-mobility", label: "자동차 / 모빌리티", sub: INDUSTRY_KEYWORDS["auto-mobility"].sub },
+    { id: "battery-energy", label: "이차전지 / 에너지 / 친환경", sub: INDUSTRY_KEYWORDS["battery-energy"].sub },
+    { id: "bio-healthcare", label: "바이오 / 헬스케어 / 제약", sub: INDUSTRY_KEYWORDS["bio-healthcare"].sub },
+    { id: "chemical-material", label: "화학 / 소재 / 부품", sub: INDUSTRY_KEYWORDS["chemical-material"].sub },
+    { id: "finance-fintech", label: "금융 / 핀테크", sub: INDUSTRY_KEYWORDS["finance-fintech"].sub },
+    { id: "retail-ecommerce", label: "유통 / 이커머스 / 소비재", sub: INDUSTRY_KEYWORDS["retail-ecommerce"].sub },
+    { id: "media-content", label: "미디어 / 콘텐츠 / 게임", sub: INDUSTRY_KEYWORDS["media-content"].sub },
+    { id: "construction-realestate", label: "건설 / 부동산 / 인프라", sub: INDUSTRY_KEYWORDS["construction-realestate"].sub },
+    { id: "logistics-shipping", label: "물류 / 해운 / 항공", sub: INDUSTRY_KEYWORDS["logistics-shipping"].sub },
+    { id: "food-agri", label: "식품 / 농업 / 푸드테크", sub: INDUSTRY_KEYWORDS["food-agri"].sub },
+    { id: "education", label: "교육 / 에듀테크", sub: INDUSTRY_KEYWORDS["education"].sub },
+    { id: "manufacturing", label: "제조 / 스마트팩토리 / 산업장비", sub: INDUSTRY_KEYWORDS["manufacturing"].sub },
+    { id: "telecom-cloud", label: "통신 / 네트워크 / 클라우드", sub: INDUSTRY_KEYWORDS["telecom-cloud"].sub },
     { id: "new-industry", label: "기타 신산업" },
   ]);
 });
@@ -608,67 +608,96 @@ app.get("/api/search", async (req, res) => {
 });
 
 // ── 슬라이드별 발표 스크립트 생성 ──
-async function generateSlideScripts(label: string, reportText: string): Promise<Record<string, string>> {
-  if (!anthropic) return {};
+async function generateSlideContent(label: string, reportText: string): Promise<any> {
+  if (!anthropic) return { slides: [] };
   try {
-    const prompt = `당신은 기업 임원 대상 산업동향 보고 발표자입니다.
+    const prompt = `당신은 기업 임원 대상 산업동향 보고 PPT 전문 작성자입니다.
 
-아래는 "${label}" 산업동향 보고서입니다. 각 ## 섹션별로 구두 발표용 스크립트를 작성해주세요.
+아래는 "${label}" 산업동향 보고서 원문입니다. 이 보고서를 기반으로 **PPT 슬라이드용 콘텐츠**를 JSON 형식으로 생성하세요.
 
-### 작성 규칙
-- 상부 경영진(임원)에게 보고하는 격식 있는 존댓말 사용
-- "~입니다", "~되겠습니다", "~드리겠습니다", "~것으로 판단됩니다" 등 보고 어미 사용
-- 절대 반말이나 구어체 금지 ("~이다", "~한다" → "~입니다", "~됩니다")
-- 각 섹션 스크립트는 발표 시 1~2분 분량 (300~500자)
-- 핵심 수치와 인사이트를 자연스럽게 녹여서 설명
-- 슬라이드 내용을 단순 낭독하지 말고, 맥락과 의미를 설명하는 방식
-- 섹션 간 자연스러운 연결 멘트 포함
-- 모든 문장은 반드시 완결된 형태로 마무리할 것
+━━━━━━━━━━━━━━━━━━━━━━
+## 핵심 원칙 (반드시 준수)
+━━━━━━━━━━━━━━━━━━━━━━
+1. **PPT는 보고서가 아닙니다.** 장문의 문장을 넣지 마세요.
+2. 각 불릿은 **핵심 키워드 + 수치 중심으로 20자 이내**로 작성하세요.
+3. 헤드메시지는 해당 섹션의 **핵심 인사이트를 한 문장으로** 요약 (50자 이내).
+4. 상부 경영진 보고용 격식 있는 존댓말 사용. 모든 문장은 완결된 형태.
+5. 보고서의 구체적 수치, 비율, 금액 등을 적극 활용하세요.
+6. 각 슬라이드는 좌/우 2개 그룹으로 나누어 작성하세요.
 
-### 출력 형식 (반드시 이 형식으로)
-각 섹션을 [SECTION: 섹션제목] 으로 구분하고 그 아래에 스크립트를 작성하세요.
+━━━━━━━━━━━━━━━━━━━━━━
+## 출력 JSON 형식 (반드시 이 형식으로)
+━━━━━━━━━━━━━━━━━━━━━━
+\`\`\`json
+{
+  "slides": [
+    {
+      "title": "섹션 제목 (번호 없이)",
+      "head_message": "이 섹션의 핵심 인사이트 한 문장 (50자 이내)",
+      "left_title": "좌측 소제목",
+      "left_bullets": ["불릿1 (20자 이내)", "불릿2", "불릿3", "불릿4"],
+      "right_title": "우측 소제목",
+      "right_bullets": ["불릿1 (20자 이내)", "불릿2", "불릿3", "불릿4"],
+      "script": "발표 스크립트 (300~500자, 존댓말)"
+    }
+  ]
+}
+\`\`\`
 
-[SECTION: Executive Summary]
-스크립트 내용...
+━━━━━━━━━━━━━━━━━━━━━━
+## 슬라이드 구성 (8개)
+━━━━━━━━━━━━━━━━━━━━━━
+1. **산업 구조 및 현황** - 좌: 시장 규모/성장률, 우: 주요 플레이어/경쟁 구도
+2. **핵심 동향 Deep-Dive** - 좌: 동향 1~2, 우: 동향 3~4
+3. **시장 전망 시나리오** - 좌: Bull/Base Case, 우: Bear Case/핵심 시그널
+4. **정책·규제 환경** - 좌: 국내 정책, 우: 글로벌 규제
+5. **기술·연구 트렌드** - 좌: 주류 기술, 우: 차세대 기술
+6. **글로벌 경쟁 지형** - 좌: 주요국 전략, 우: 한국 포지셔닝
+7. **리스크·기회 매트릭스** - 좌: 리스크 요인, 우: 기회 요인
+8. **전략적 제언** - 좌: 단기 실행과제, 우: 중장기 전략
 
-[SECTION: 산업 구조 및 현황]
-스크립트 내용...
+━━━━━━━━━━━━━━━━━━━━━━
+## 불릿 작성 예시
+━━━━━━━━━━━━━━━━━━━━━━
+❌ 나쁜 예: "글로벌 AI 시장은 2024년 3,700억 달러에서 2025년 5,000억 달러로 성장할 것으로 예상됩니다"
+✅ 좋은 예: "글로벌 AI 시장 5,000억$ (YoY +35%)"
 
-(이하 모든 섹션)
+❌ 나쁜 예: "기업들의 생성형 AI 도입률이 급증하고 있으며 특히 고객서비스 분야에서 활발히 적용되고 있습니다"
+✅ 좋은 예: "생성형 AI 기업 도입률 80% 돌파"
 
-### 보고서 원문
-${reportText}`;
+━━━━━━━━━━━━━━━━━━━━━━
+## 보고서 원문
+━━━━━━━━━━━━━━━━━━━━━━
+${reportText}
+
+**중요: 반드시 유효한 JSON만 출력하세요. 코드블록(\`\`\`)이나 설명 없이 { 로 시작하여 } 로 끝나는 순수 JSON만 출력하세요.**`;
 
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 4000,
+      max_tokens: 6000,
       messages: [{ role: "user", content: prompt }],
     });
 
     const text = response.content.find((b) => b.type === "text")?.text || "";
-    const scripts: Record<string, string> = {};
-    const parts = text.split(/\[SECTION:\s*/);
-    for (const part of parts) {
-      if (!part.trim()) continue;
-      const closeBracket = part.indexOf("]");
-      if (closeBracket === -1) continue;
-      const sectionName = part.slice(0, closeBracket).trim();
-      const script = part.slice(closeBracket + 1).trim();
-      scripts[sectionName] = script;
+    // JSON 추출 (코드블록 안에 있을 수도 있음)
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error("Slide content: no JSON found");
+      return { slides: [] };
     }
-    return scripts;
+    return JSON.parse(jsonMatch[0]);
   } catch (e) {
-    console.error("Script generation error:", e);
-    return {};
+    console.error("Slide content generation error:", e);
+    return { slides: [] };
   }
 }
 
 // ── PPT 생성 ──
 app.post("/api/generate-ppt", async (req, res) => {
   try {
-    // 슬라이드별 스크립트 생성
-    const scripts = await generateSlideScripts(req.body.label || "", req.body.report || "");
-    const pptData = { ...req.body, scripts };
+    // Claude에게 PPT용 콘텐츠(불릿, 헤드메시지, 스크립트) 생성 요청
+    const slideContent = await generateSlideContent(req.body.label || "", req.body.report || "");
+    const pptData = { ...req.body, slideContent };
     const jsonInput = JSON.stringify(pptData);
     const scriptPath = path.join(process.cwd(), "generate-ppt.py");
 
