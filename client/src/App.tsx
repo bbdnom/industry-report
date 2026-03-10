@@ -132,7 +132,7 @@ async function downloadWord(report: ReportResult) {
     spacing: { before: 600, after: 200 },
   }));
   report.references.forEach((ref, i) => {
-    const typeLabel = ref.type === "paper" ? "[논문]" : ref.type === "policy" ? "[정책]" : ref.type === "global" ? "[글로벌]" : "[뉴스]";
+    const typeLabel = ref.type === "paper" ? "[논문]" : ref.type === "policy" || ref.type === "kdi" ? "[정책]" : ref.type === "global" ? "[글로벌]" : "[뉴스]";
     paragraphs.push(new Paragraph({
       children: [
         new TextRun({ text: `${i + 1}. ${typeLabel} `, size: 18, color: "666666" }),
@@ -185,9 +185,9 @@ export default function App() {
     "경제전망 데이터를 조회하고 있습니다...",
     "글로벌 이슈를 탐색하고 있습니다...",
     "수집된 데이터를 종합 분석하고 있습니다...",
+    "핵심 인사이트를 도출하고 있습니다...",
+    "시장 전망 시나리오를 구성하고 있습니다...",
     "AI가 인사이트 보고서를 작성하고 있습니다...",
-    "보고서 품질을 검토하고 있습니다...",
-    "거의 완료되었습니다. 잠시만 기다려주세요...",
   ];
 
   const { data: categories } = useQuery<Category[]>({
@@ -267,7 +267,7 @@ export default function App() {
             <h1 className="text-lg text-white"><span className="font-bold">산업동향 초안 생성</span> <span className="font-light text-slate-400">by 혜만</span></h1>
             <p className="text-xs text-slate-500">AI 기반 산업 리서치 리포트</p>
           </div>
-          <span className="text-xs text-slate-600 font-mono">ver 2.3</span>
+          <span className="text-xs text-slate-600 font-mono">ver 2.4</span>
         </div>
       </header>
 
@@ -434,11 +434,11 @@ export default function App() {
                       <span className="text-slate-600 shrink-0 w-5 text-right print:text-gray-400">{i + 1}.</span>
                       <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium print:border print:border-gray-300 ${
                         ref.type === "paper" ? "bg-blue-900/50 text-blue-400 print:text-blue-700" :
-                        ref.type === "policy" ? "bg-purple-900/50 text-purple-400 print:text-purple-700" :
+                        ref.type === "policy" || ref.type === "kdi" ? "bg-purple-900/50 text-purple-400 print:text-purple-700" :
                         ref.type === "global" ? "bg-amber-900/50 text-amber-400 print:text-amber-700" :
                         "bg-green-900/50 text-green-400 print:text-green-700"
                       }`}>
-                        {ref.type === "paper" ? "논문" : ref.type === "policy" ? "정책" : ref.type === "global" ? "글로벌" : "뉴스"}
+                        {ref.type === "paper" ? "논문" : ref.type === "policy" || ref.type === "kdi" ? "정책" : ref.type === "global" ? "글로벌" : "뉴스"}
                       </span>
                       <div className="min-w-0">
                         <a href={ref.url} target="_blank" rel="noopener noreferrer"
