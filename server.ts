@@ -19,7 +19,15 @@ app.use(express.json());
 const dbpia = new DbpiaClient(process.env.DBPIA_API_KEY!);
 const naver = new NaverClient(process.env.NAVER_CLIENT_ID!, process.env.NAVER_CLIENT_SECRET!);
 const newsApi = new NewsClient(process.env.NEWS_API_KEY!);
-const kdi = process.env.KDI_API_KEY ? new KdiClient(process.env.KDI_API_KEY) : null;
+const kdiKeys: Partial<Record<import("./lib-kdi.js").KdiCategory, string>> = {};
+if (process.env.KDI_API_KEY_A) kdiKeys.A = process.env.KDI_API_KEY_A;
+if (process.env.KDI_API_KEY_B) kdiKeys.B = process.env.KDI_API_KEY_B;
+if (process.env.KDI_API_KEY_C) kdiKeys.C = process.env.KDI_API_KEY_C;
+if (process.env.KDI_API_KEY_D) kdiKeys.D = process.env.KDI_API_KEY_D;
+if (process.env.KDI_API_KEY_E) kdiKeys.E = process.env.KDI_API_KEY_E;
+// 하위 호환: KDI_API_KEY만 있으면 C로 사용
+if (process.env.KDI_API_KEY && !kdiKeys.C) kdiKeys.C = process.env.KDI_API_KEY;
+const kdi = Object.keys(kdiKeys).length > 0 ? new KdiClient(kdiKeys) : null;
 
 const anthropic = process.env.ANTHROPIC_API_KEY
   ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -176,8 +184,8 @@ async function collectData(searchKr: string[], searchEn: string[]) {
     naver.searchNews(krCompanyQuery, { display: 15, sort: "date" }),
     newsApi.searchEverything(enMainQuery, { language: "en", pageSize: 30, sortBy: "publishedAt" }),
     newsApi.searchEverything(enTrendQuery, { language: "en", pageSize: 20, sortBy: "relevancy" }),
-    kdi ? kdi.getLatest(3) : Promise.resolve({ totalCount: 0, items: [] }),
-    kdi ? kdi.search("경제") : Promise.resolve({ totalCount: 0, items: [] }),
+    kdi ? kdi.getLatest(5) : Promise.resolve({ totalCount: 0, items: [] }),
+    kdi ? kdi.searchAll(searchKr[0]) : Promise.resolve({ totalCount: 0, items: [] }),
   ]);
 
   const papers = papersResult.status === "fulfilled" ? papersResult.value : { totalCount: 0, items: [] };
@@ -737,7 +745,13 @@ if (isProd) {
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`Industry Report server running on http://localhost:${PORT}`);
-  if (!anthropic) console.warn("⚠ ANTHROPIC_API_KEY 미설정 - AI 보고서 생성 불가");
-});
+// Vercel serverless export
+export default app;
+
+// 로컬 실행 시에만 listen
+if (process.env.VERCEL !== "1") {
+  app.listen(PORT, () => {
+    console.log(`Industry Report server running on http://localhost:${PORT}`);
+    if (!anthropic) console.warn("⚠ ANTHROPIC_API_KEY 미설정 - AI 보고서 생성 불가");
+  });
+}

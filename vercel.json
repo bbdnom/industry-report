@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "buildCommand": "npx vite build --config client/vite.config.ts",
+  "outputDirectory": "client/dist",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api" }
+  ],
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 60
+    }
+  },
+  "env": {
+    "VERCEL": "1"
+  }
+}
